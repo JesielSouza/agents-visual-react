@@ -8,6 +8,7 @@ build/
 # Logs
 *.log
 npm-debug.log*
+*-runtime.log
 
 # Environment
 .env
@@ -24,6 +25,13 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local visual validation artifacts
+.codex-visual-check/
+
+# Optional: local planning/codebase snapshots
+# Descomentar apenas se a politica do repo for nao versionar contexto operacional
+# .planning/codebase/
 
 # Runtime data (not code — these are state files outside the project dir)
 # Note: server/agents/ references ../agents/status.json which lives in the
