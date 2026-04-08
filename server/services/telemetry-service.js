@@ -25,8 +25,9 @@ function buildEventId(prefix) {
 }
 
 export class TelemetryService {
-  constructor({ llmRouter }) {
+  constructor({ llmRouter, openClawBridge = null }) {
     this.llmRouter = llmRouter;
+    this.openClawBridge = openClawBridge;
     this.runtimeEvents = [];
     this.agentLLMMap = new Map();
     this.ceoState = {
@@ -113,10 +114,29 @@ export class TelemetryService {
         last_activity: this.ceoState.last_activity,
         autonomous: true,
       };
-      return normalized;
+      return this.applyExternalAgentStates(normalized);
     }
 
-    return [this.ceoState, ...normalized];
+    return this.applyExternalAgentStates([this.ceoState, ...normalized]);
+  }
+
+  applyExternalAgentStates(agents) {
+    if (!this.openClawBridge) return agents;
+
+    const sargento = this.openClawBridge.getSargentoStatus();
+    const next = [...agents];
+    const existingIndex = next.findIndex((agent) => agent.id === sargento.id);
+
+    if (existingIndex !== -1) {
+      next[existingIndex] = {
+        ...next[existingIndex],
+        ...sargento,
+      };
+      return next;
+    }
+
+    next.push(sargento);
+    return next;
   }
 
   async getTasksStatus() {
@@ -183,10 +203,191 @@ export class TelemetryService {
     this.runtimeEvents = this.runtimeEvents.slice(0, 200);
   }
 
+  /**
+   * Record a chat message (user -> agent or agent -> user).
+   * Creates TWO records per interaction for proper bidirectional traceability:
+   * - "incoming": the human's message, targeted at an agent
+   * - "outgoing": the agent's reply, responding to that message
+   *
+   * Both records share `correlationId` so frontend can pair them.
+   * Persisted to status.json via sync.
+   */
+  recordChatEvent({ from, fromName, fromTeam, to, message, reply, type, agentId, llmUsed }) {
+    const correlationId = `corr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const incomingEvent = {
+      id: buildEventId('evt-chat-in'),
+      timestamp: nowIso(),
+      correlationId,
+      direction: 'incoming',
+      from,
+      fromName: fromName || 'Human',
+      fromTeam: fromTeam || null,
+      to,
+      message: message || null,
+      reply: null,
+      llm_used: null,
+      type: type || 'direct',
+      agentId: agentId || null,
+      eventType: 'chat',
+    };
+
+    const outgoingEvent = {
+      id: buildEventId('evt-chat-out'),
+      timestamp: nowIso(),
+      correlationId,
+      direction: 'outgoing',
+      from: to,
+      fromName: to ? this._resolveAgentName(to) : null,
+      fromTeam: null,
+      to: from,
+      message: message || null,
+      reply: reply || null,
+      llm_used: llmUsed || null,
+      type: type || 'direct',
+      agentId: agentId || null,
+      eventType: 'chat',
+    };
+
+    this.runtimeEvents.unshift(outgoingEvent, incomingEvent);
+    // Keep last 100 chat pairs (200 events) in memory
+    const chatEvents = this.runtimeEvents.filter((e) => e.eventType === 'chat').slice(0, 200);
+    this.runtimeEvents = [
+      ...chatEvents,
+      ...this.runtimeEvents.filter((e) => e.eventType !== 'chat'),
+    ].slice(0, 200);
+    return { incoming: incomingEvent, outgoing: outgoingEvent };
+  }
+
+  _resolveAgentName(agentId) {
+    const names = {
+      ceo: 'CEO',
+      coding: 'Coding',
+      work: 'Work',
+      social: 'Social',
+      hr: 'RH',
+      sargento: 'SARGENTO',
+      'qa-contract-01': 'QA',
+    };
+    return names[agentId] || agentId;
+  }
+
+  /**
+   * Record a command execution.
+   * Persisted to status.json via sync.
+   */
+  recordCommandEvent({ agentId, agentName, command, status, result, note, llmUsed }) {
+    const event = {
+      id: buildEventId('evt-cmd'),
+      timestamp: nowIso(),
+      agentId,
+      agentName,
+      command,
+      status: status || 'unknown',
+      result: result || null,
+      note: note || null,
+      llm_used: llmUsed || null,
+    };
+    this.runtimeEvents.unshift({ ...event, eventType: 'command' });
+    // Keep last 100 command events in memory
+    const cmdEvents = this.runtimeEvents.filter((e) => e.eventType === 'command').slice(0, 100);
+    this.runtimeEvents = [
+      ...cmdEvents,
+      ...this.runtimeEvents.filter((e) => e.eventType !== 'command'),
+    ].slice(0, 200);
+    return event;
+  }
+
+  getChatHistory({ agentId, limit } = {}) {
+    const all = this.runtimeEvents
+      .filter((e) => e.eventType === 'chat')
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)) // newest first
+      .slice(0, limit || 50);
+    if (agentId) {
+      return all.filter((e) => e.agentId === agentId);
+    }
+    return all;
+  }
+
+  getCommandHistory({ agentId, limit } = {}) {
+    const all = this.runtimeEvents
+      .filter((e) => e.eventType === 'command')
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)) // newest first
+      .slice(0, limit || 50);
+    if (agentId) {
+      return all.filter((e) => e.agentId === agentId);
+    }
+    return all;
+  }
+
+  async syncHistoryToFile() {
+    try {
+      const raw = await fs.readFile(STATUS_FILE, 'utf8');
+      const parsed = JSON.parse(this.stripBOM(raw));
+
+      const chatHistory = this.runtimeEvents
+        .filter((e) => e.eventType === 'chat')
+        .slice(0, 200)
+        .map(({ eventType: _eT, ...rest }) => rest);
+
+      const cmdHistory = this.runtimeEvents
+        .filter((e) => e.eventType === 'command')
+        .slice(0, 200)
+        .map(({ eventType: _eT, ...rest }) => rest);
+
+      parsed.chat_history = chatHistory;
+      parsed.command_history = cmdHistory;
+      parsed.updatedAt = new Date().toISOString();
+
+      await fs.writeFile(STATUS_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+    } catch (err) {
+      console.error(`[Telemetry] syncHistoryToFile failed: ${err.message}`);
+    }
+  }
+
   async getMergedEvents() {
     const snapshot = await this.readEventsSnapshot();
     return [...(snapshot.events || []), ...this.runtimeEvents]
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  }
+
+  /**
+   * Persist runtime agent states back to status.json.
+   * Called periodically by the CEO orchestrator to avoid losing state on restart.
+   */
+  async syncRuntimeStateToFile() {
+    try {
+      const raw = await fs.readFile(STATUS_FILE, 'utf8');
+      const parsed = JSON.parse(this.stripBOM(raw));
+
+      parsed.agents = parsed.agents.map((agent) => {
+        if (agent.id === 'ceo') {
+          return {
+            ...agent,
+            status: this.ceoState.status,
+            current_task: this.ceoState.current_task,
+            summary: this.ceoState.summary,
+            zone: this.ceoState.zone,
+            llm_provider: this.ceoState.llm_provider,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        const runtime = this._runtimeAgentState?.get(agent.id);
+        if (!runtime) return agent;
+        return {
+          ...agent,
+          status: runtime.status ?? agent.status,
+          task: runtime.current_task ?? agent.task,
+          summary: runtime.summary ?? agent.summary,
+          updatedAt: runtime.updatedAt ?? agent.updatedAt,
+        };
+      });
+
+      parsed.updatedAt = new Date().toISOString();
+      await fs.writeFile(STATUS_FILE, JSON.stringify(parsed, null, 2), 'utf8');
+    } catch (err) {
+      console.error(`[Telemetry] syncRuntimeStateToFile failed: ${err.message}`);
+    }
   }
 
   updateCEOState(patch) {
