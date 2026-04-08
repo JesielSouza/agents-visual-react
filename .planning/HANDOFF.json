@@ -1,0 +1,146 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-08T00:50:43.254Z",
+  "phase": null,
+  "phase_name": "agents-visual-react",
+  "phase_dir": ".planning",
+  "plan": 1,
+  "task": 1,
+  "total_tasks": 4,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Auditar as 8 views/componentes da paleta escura obrigatoria",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "Aplicar a paleta dark obrigatoria aos 8 arquivos-alvo",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "Validar ausencia dos tokens proibidos nos 8 arquivos corrigidos",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "Gerar handoff de pausa com contexto tecnico e produto",
+      "status": "done"
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 5,
+      "name": "Fazer varredura repo-wide de cores proibidas fora dos 8 arquivos auditados",
+      "status": "not_started"
+    },
+    {
+      "id": 6,
+      "name": "Validar em navegador os fluxos impactados e investigar o erro de update depth do Vite",
+      "status": "not_started"
+    },
+    {
+      "id": 7,
+      "name": "Resolver pendencias de produto e integracao: SARGENTO como Lucas, OpenClawBridge e Telegram",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "vite-runtime.log registrou repetidos erros de 'Maximum update depth exceeded', o que pode invalidar verificacao visual",
+      "type": "technical",
+      "workaround": "Inspecionar telas afetadas e rastrear o loop antes de declarar a auditoria finalizada"
+    },
+    {
+      "description": "Estado real de Telegram/OpenClaw ainda precisa ser confirmado junto do gateway e da configuracao local",
+      "type": "external",
+      "workaround": "Cruzar bridge, config OpenClaw e UI antes de assumir que SARGENTO esta operacional"
+    }
+  ],
+  "human_actions_pending": [
+    {
+      "action": "Fazer validacao visual manual no navegador",
+      "context": "A auditoria atual foi por codigo e logs; falta checar as telas reais",
+      "blocking": true
+    },
+    {
+      "action": "Confirmar readiness do Telegram/OpenClaw no ambiente ativo",
+      "context": "O bridge depende de gateway em 18789 e da conta telegram configurada para sargento",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Usar a paleta dark obrigatoria com tolerancia zero para tokens claros proibidos",
+      "rationale": "Padronizar a UI e eliminar regressao visual de tema claro",
+      "phase": null
+    },
+    {
+      "decision": "Manter o handoff e o contexto dentro do repo agents-visual-react",
+      "rationale": "Evitar deriva de contexto causada pelo workspace multi-repo na raiz do usuario",
+      "phase": null
+    },
+    {
+      "decision": "Tratar OpenClawBridge, Telegram e nome do agente como pendencias apos a auditoria visual",
+      "rationale": "Separar fechamento do tema dark de integracao/backoffice para reduzir confusao na retomada",
+      "phase": null
+    }
+  ],
+  "uncommitted_files": [
+    ".planning/codebase/ARCHITECTURE.md",
+    ".planning/codebase/CONVENTIONS.md",
+    ".planning/codebase/STRUCTURE.md",
+    ".planning/codebase/TESTING.md",
+    "README.md",
+    "package.json",
+    "server/agents/agent-manager.js",
+    "server/agents/base-agent.js",
+    "server/agents/ceo-agent.js",
+    "server/agents/coding-agent.js",
+    "server/agents/hr-agent.js",
+    "server/agents/qa-agent.js",
+    "server/agents/social-agent.js",
+    "server/agents/work-agent.js",
+    "server/config.js",
+    "server/index.js",
+    "server/llm/llm-router.js",
+    "server/services/telemetry-service.js",
+    "src/App.jsx",
+    "src/components/AgentBar.jsx",
+    "src/components/AgentDot.jsx",
+    "src/components/AgentTooltip.jsx",
+    "src/components/CommandDesk.jsx",
+    "src/components/LLMIndicator.jsx",
+    "src/components/LogPanel.jsx",
+    "src/components/MeetingPanel.jsx",
+    "src/components/OpsDock.jsx",
+    "src/components/SoundSettings.jsx",
+    "src/components/TaskBoard.jsx",
+    "src/components/Toolbar.jsx",
+    "src/hooks/useAgents.js",
+    "src/hooks/useChat.js",
+    "src/hooks/useEvents.js",
+    "src/hooks/useTasks.js",
+    "src/index.css",
+    "src/main.jsx",
+    "src/views/OfficeView.jsx",
+    "src/views/WorldView.jsx",
+    "tailwind.config.js",
+    "vite.config.js",
+    "docs/",
+    "server/lib/chat-router.js",
+    "server/llm/prompt-loader.js",
+    "server/llm/system-prompts/",
+    "server/services/openclaw-bridge.js",
+    "server/services/task-queue.js",
+    "src/components/PixelPortrait.jsx",
+    "src/hooks/useCommandCenter.js",
+    "src/hooks/useViewport.js",
+    "src/utils/agentPrompts.js",
+    "src/views/OfficeChatView.jsx"
+  ],
+  "next_action": "Executar uma varredura repo-wide por tokens proibidos em src e server, corrigir residuos fora dos 8 arquivos auditados e validar as telas no navegador antes de mexer em SARGENTO/Lucas ou OpenClawBridge/Telegram.",
+  "context_notes": "O trabalho mais recente foi a auditoria dark theme dirigida por handoff. Os 8 arquivos pedidos foram corrigidos. Ainda ha muitas modificacoes locais no repo; nao reverter nada sem entender a origem. O projeto depende de API local em 8787, gateway OpenClaw em 18789 e Ollama local. O proximo passo deve fechar o tema visual antes de retomar as pendencias de identidade e integracao."
+}
