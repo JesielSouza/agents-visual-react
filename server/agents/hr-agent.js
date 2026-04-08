@@ -1,4 +1,4 @@
-import { BaseAgent, extractJson } from './base-agent.js';
+import { BaseAgent } from './base-agent.js';
 
 const SYSTEM_PROMPT = `Você é RH (People Ops), o agente de Gestão de Pessoas desta empresa de software.
 

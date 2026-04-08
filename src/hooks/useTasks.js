@@ -1,62 +1,76 @@
-import { useState, useEffect, useRef } from 'react';
-import { playSuccess } from '../utils/pixelSounds';
+import { useEffect, useMemo, useState } from 'react';
+import { apiUrl } from '../utils/api';
 
 const POLL_MS = 8000;
 
 const PRIORITY_LABELS = { low: '!', medium: '!!', high: '!!!' };
 const PRIORITY_COLORS = { low: '#6b7280', medium: '#f59e0b', high: '#ef4444' };
-const STATUS_COLORS = { todo: '#6b7280', in_progress: '#f59e0b', done: '#22c55e' };
+const STATUS_COLORS = {
+  todo: '#6b7280',
+  in_progress: '#f59e0b',
+  done: '#22c55e',
+  failed: '#ef4444',
+};
 
-const TASK_TEMPLATES = [
-  'Revisar pull request', 'Atualizar documentacao', 'Corrigir bug no modulo de auth',
-  'Fazer deploy em staging', 'Escrever testes unitarios', 'Refatorar camada da API',
-  'Otimizar queries do banco', 'Sessao de code review', 'Atualizar dependencias',
-  'Criar pipeline de CI', 'Corrigir vazamento de memoria', 'Revisar arquitetura',
-  'Escrever script de migracao', 'Atualizar configuracao', 'Corrigir teste instavel',
-  'Implementar cache', 'Adicionar logs', 'Auditoria de seguranca',
-  'Perfil de performance', 'Atualizar README',
-];
-
-function seededRandom(seed) {
-  return ((Math.sin(seed + 1) * 10000) % 1 + 1) % 1;
+function normalizePriority(priority) {
+  const value = String(priority || '').toLowerCase();
+  if (['urgent', 'critical', 'high'].includes(value)) return 'high';
+  if (['medium', 'normal'].includes(value)) return 'medium';
+  return 'low';
 }
 
-function generateTasks(agents, count = 8) {
-  const tasks = [];
-  const now = Date.now();
+function normalizeStatus(status) {
+  const value = String(status || '').toLowerCase();
+  if (['pending', 'todo', 'queued'].includes(value)) return 'todo';
+  if (['assigned', 'running', 'in_progress', 'in-progress', 'active'].includes(value)) return 'in_progress';
+  if (['completed', 'complete', 'done'].includes(value)) return 'done';
+  if (['failed', 'error'].includes(value)) return 'failed';
+  return 'todo';
+}
 
-  for (let i = 0; i < count; i++) {
-    const seed = i * 17 + 3;
-    const agentIdx = Math.floor(seededRandom(seed) * agents.length);
-    const agent = agents[agentIdx] || agents[0];
-    const statusSeed = i * 7 + 11;
-    const prioritySeed = i * 13 + 5;
+function toIsoDate(value) {
+  if (!value) return new Date().toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
 
-    const statuses = ['todo', 'todo', 'todo', 'in_progress', 'in_progress', 'done', 'done', 'done'];
-    const priorities = ['low', 'low', 'medium', 'medium', 'medium', 'high'];
+function resolveAssignedAgent(task, agentsById) {
+  const agentId = task.assigned_to || task.assignedTo || task.agentId || task.agent_id || null;
+  const agent = agentId ? agentsById.get(agentId) : null;
+  return {
+    assigned_to: agentId || 'unassigned',
+    assigned_name: agent?.name || agent?.display_name || agent?.current_action || agentId || 'Sem agente',
+    assigned_team: agent?.team || agent?.zone || 'General',
+  };
+}
 
-    const status = statuses[Math.floor(seededRandom(statusSeed) * statuses.length)];
-    const priority = priorities[Math.floor(seededRandom(prioritySeed) * priorities.length)];
-    const template = TASK_TEMPLATES[Math.floor(seededRandom(i * 5 + 2) * TASK_TEMPLATES.length)];
+function normalizeTask(task, agentsById) {
+  const assignee = resolveAssignedAgent(task, agentsById);
+  return {
+    id: task.id || `${task.title || 'task'}-${task.createdAt || Date.now()}`,
+    title: task.title || task.description || task.summary || 'Tarefa sem titulo',
+    description: task.description || task.summary || '',
+    project: task.project || 'general',
+    priority: normalizePriority(task.priority),
+    status: normalizeStatus(task.status),
+    created_at: toIsoDate(task.createdAt || task.created_at),
+    assigned_at: task.assignedAt ? toIsoDate(task.assignedAt) : null,
+    completed_at: task.completedAt ? toIsoDate(task.completedAt) : null,
+    raw_status: task.status || null,
+    ...assignee,
+  };
+}
 
-    const createdAt = new Date(now - Math.floor(seededRandom(i * 3 + 7) * 3600000 * 24));
-
-    tasks.push({
-      id: `task-${i + 1}`,
-      title: template,
-      assigned_to: agent?.id || 'unknown',
-      assigned_name: agent?.name || 'Unknown',
-      assigned_team: agent?.team || agent?.zone || 'Engineering',
-      status,
-      priority,
-      created_at: createdAt.toISOString(),
-    });
-  }
-
-  return tasks.sort((a, b) => {
-    const order = { high: 0, medium: 1, low: 2 };
-    return (order[a.priority] - order[b.priority]);
-  });
+function normalizeStats(payload = {}) {
+  return {
+    total: Number(payload.total || 0),
+    pending: Number(payload.pending || 0),
+    assigned: Number(payload.assigned || 0),
+    running: Number(payload.running || 0),
+    completed: Number(payload.completed || 0),
+    failed: Number(payload.failed || 0),
+    by_agent: payload.by_agent || {},
+  };
 }
 
 function relativeTime(date) {
@@ -74,41 +88,50 @@ export { relativeTime, STATUS_COLORS, PRIORITY_COLORS, PRIORITY_LABELS };
 
 export function useTasks(agents) {
   const [tasks, setTasks] = useState([]);
-  const tasksRef = useRef([]);
-  const initializedRef = useRef(false);
+  const [stats, setStats] = useState(() => normalizeStats());
+
+  const agentsById = useMemo(() => {
+    const map = new Map();
+    agents.forEach((agent) => map.set(agent.id, agent));
+    return map;
+  }, [agents]);
 
   useEffect(() => {
-    if (initializedRef.current || agents.length === 0) return;
-    const initial = generateTasks(agents, 10);
-    tasksRef.current = initial;
-    setTasks(initial);
-    initializedRef.current = true;
-  }, [agents]); // run once when agents load
+    let cancelled = false;
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      // Randomly advance one task
-      setTasks((prev) => {
-        const next = [...prev];
-        const todoIdx = next.findIndex((t) => t.status === 'todo');
-        const inProgIdx = next.findIndex((t) => t.status === 'in_progress');
+    async function fetchTasks() {
+      try {
+        const [statusRes, pendingRes] = await Promise.all([
+          fetch(apiUrl('/api/tasks/status')),
+          fetch(apiUrl('/api/tasks/pending')),
+        ]);
 
-        if (todoIdx !== -1 && Math.random() > 0.5) {
-          next[todoIdx] = { ...next[todoIdx], status: 'in_progress' };
-        } else if (inProgIdx !== -1 && Math.random() > 0.6) {
-          next[inProgIdx] = { ...next[inProgIdx], status: 'done' };
-          playSuccess({ volume: 0.4, category: 'notifications', from: 420, to: 860 });
-        } else if (todoIdx !== -1) {
-          next[todoIdx] = { ...next[todoIdx], status: 'in_progress' };
+        const statusData = statusRes.ok ? await statusRes.json() : {};
+        const pendingData = pendingRes.ok ? await pendingRes.json() : { tasks: [] };
+
+        if (cancelled) return;
+
+        setStats(normalizeStats(statusData));
+        setTasks(
+          (pendingData.tasks || [])
+            .map((task) => normalizeTask(task, agentsById))
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        );
+      } catch {
+        if (!cancelled) {
+          setStats((prev) => prev || normalizeStats());
+          setTasks((prev) => prev || []);
         }
+      }
+    }
 
-        tasksRef.current = next;
-        return next;
-      });
-    }, POLL_MS);
+    fetchTasks();
+    const id = setInterval(fetchTasks, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [agentsById]);
 
-    return () => clearInterval(id);
-  }, []);
-
-  return { tasks };
+  return { tasks, stats };
 }

@@ -73,23 +73,31 @@ export function useEvents(agents) {
 
       const newEvents = [];
       let found = false;
+      const lastKey = lastIdRef.current != null ? String(lastIdRef.current) : '';
       for (let i = events.length - 1; i >= 0; i--) {
-        if (events[i].id === lastIdRef.current) { found = true; break; }
+        if (String(events[i].id) === lastKey) {
+          found = true;
+          break;
+        }
         newEvents.unshift(events[i]);
       }
 
-      if (!found) {
-        lastIdRef.current = newestId;
-        const agentMap = {};
-        agents.forEach((a) => { agentMap[a.id] = a; });
-        const mapped = mapEvents(newEvents, agentMap);
+      const agentMap = {};
+      agents.forEach((a) => {
+        agentMap[a.id] = a;
+      });
 
-        if (mapped.length > 0) {
-          setLogs((prev) => {
-            const next = [...mapped, ...prev];
-            return next.slice(0, 150);
-          });
-        }
+      if (found && newEvents.length > 0) {
+        lastIdRef.current = newestId;
+        const mapped = mapEvents(newEvents, agentMap);
+        setLogs((prev) => {
+          const next = [...mapped, ...prev];
+          return next.slice(0, 150);
+        });
+      } else if (!found) {
+        lastIdRef.current = newestId;
+        const mapped = mapEvents(events.slice(-40).reverse(), agentMap);
+        setLogs(mapped);
       }
     } catch {
       // Silently fail

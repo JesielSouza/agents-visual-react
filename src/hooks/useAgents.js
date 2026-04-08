@@ -126,6 +126,12 @@ function seededRandom(seed) {
   return ((Math.sin(seed + 1) * 10000) % 1 + 1) % 1;
 }
 
+function normalizeProgress(value) {
+  if (value == null || typeof value !== 'number' || Number.isNaN(value)) return null;
+  if (value > 1 && value <= 100) return Math.min(1, Math.max(0, value / 100));
+  return Math.min(1, Math.max(0, value));
+}
+
 function lerp(a, b, t) { return a + (b - a) * t; }
 function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
@@ -335,6 +341,7 @@ export function useAgents() {
     agentsRef.current.forEach(function(agent, id) {
       if (inMeetingRef.current[id]) return;
       if (!ACTIVE_ROAM_STATUSES.has(agent.status)) return;
+      if (hasAssignedWork(agent)) return;
 
       var current = posRef.current.get(id);
       if (!current || current.isMoving || animRef.current.has(id)) return;
@@ -365,11 +372,14 @@ export function useAgents() {
       var incoming = Array.isArray(data) ? data : (data.agents || []);
 
       var nextAgents = incoming.map(function(a) {
+        var progress = normalizeProgress(
+          a.task_progress != null ? a.task_progress : a.progress
+        );
         return Object.assign({}, a, {
           zone: resolveZone(a),
           activity: {
             label: ACTIVITY_LABELS[resolveZone(a)] || DEFAULT_ACTIVITY,
-            progress: Math.random(),
+            progress: progress,
           },
         });
       });
@@ -432,6 +442,8 @@ export function useAgents() {
           nextPositions.set(a.id, {
             x: newTarget.x,
             y: newTarget.y,
+            targetX: newTarget.x,
+            targetY: newTarget.y,
             isMoving: false,
             facing: newTarget.facing || 'down',
           });

@@ -1,4 +1,4 @@
-import { BaseAgent, extractJson } from './base-agent.js';
+import { BaseAgent } from './base-agent.js';
 
 const SYSTEM_PROMPT = `Você é Work, o agente de Operações e Análise Estrutural desta empresa de software.
 

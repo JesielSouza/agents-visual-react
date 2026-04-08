@@ -2,12 +2,57 @@ import http from 'node:http';
 import { CEO_INTERVAL_MS, PORT } from './config.js';
 import { LLMRouter } from './llm/llm-router.js';
 import { TelemetryService } from './services/telemetry-service.js';
-import { TaskQueue } from './services/task-queue.js';
 import { CEOAgent } from './agents/ceo-agent.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { OpenClawBridge } from './services/openclaw-bridge.js';
 import { detectAgents, buildRouting } from './lib/chat-router.js';
 import { promptLoader } from './llm/prompt-loader.js';
+
+function createUnavailableTaskQueue() {
+  const reason = 'Task queue unavailable in this runtime.';
+  return {
+    available: false,
+    reason,
+    async init() {},
+    async syncToStatusJson() {},
+    getStatus() {
+      return {
+        total: 0,
+        pending: 0,
+        assigned: 0,
+        running: 0,
+        completed: 0,
+        failed: 0,
+        by_agent: {},
+      };
+    },
+    getPending() {
+      return [];
+    },
+    async addTask() {
+      throw new Error(reason);
+    },
+    async assignTask() {
+      throw new Error(reason);
+    },
+    async completeTask() {
+      throw new Error(reason);
+    },
+  };
+}
+
+async function createTaskQueue(telemetry) {
+  try {
+    const { TaskQueue } = await import('./services/task-queue.js');
+    const taskQueue = new TaskQueue({ telemetry });
+    await taskQueue.init();
+    taskQueue.available = true;
+    return taskQueue;
+  } catch (error) {
+    console.warn(`[Bootstrap] TaskQueue unavailable: ${error.message}`);
+    return createUnavailableTaskQueue();
+  }
+}
 
 const llmRouter = new LLMRouter();
 await llmRouter.detectAvailableLLMs();
@@ -20,8 +65,7 @@ const telemetry = new TelemetryService({ llmRouter, openClawBridge });
 const disableAutonomousLoops = process.env.DISABLE_AUTONOMOUS_LOOPS === 'true';
 
 // Task queue — initialized from status.json
-const taskQueue = new TaskQueue({ telemetry });
-await taskQueue.init();
+const taskQueue = await createTaskQueue(telemetry);
 
 // CEO — own loop, now with task awareness
 const ceoAgent = new CEOAgent({
@@ -67,6 +111,14 @@ function readBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+function ensureTaskQueue(res, taskQueue) {
+  if (taskQueue.available !== false) return true;
+  sendJson(res, 503, {
+    error: taskQueue.reason || 'Task queue unavailable.',
+  });
+  return false;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -366,16 +418,19 @@ const server = http.createServer(async (req, res) => {
 
     // Task queue endpoints
     if (req.method === 'GET' && url.pathname === '/api/tasks/status') {
+      if (!ensureTaskQueue(res, taskQueue)) return;
       sendJson(res, 200, taskQueue.getStatus());
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/api/tasks/pending') {
+      if (!ensureTaskQueue(res, taskQueue)) return;
       sendJson(res, 200, { tasks: taskQueue.getPending() });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/api/tasks/add') {
+      if (!ensureTaskQueue(res, taskQueue)) return;
       const body = await readBody(req);
       if (!body.title) {
         sendJson(res, 400, { error: 'title é obrigatório' });
@@ -393,6 +448,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/tasks/assign') {
+      if (!ensureTaskQueue(res, taskQueue)) return;
       const body = await readBody(req);
       if (!body.task_id || !body.agent_id) {
         sendJson(res, 400, { error: 'task_id e agent_id são obrigatórios' });
@@ -408,6 +464,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/tasks/complete') {
+      if (!ensureTaskQueue(res, taskQueue)) return;
       const body = await readBody(req);
       if (!body.task_id) {
         sendJson(res, 400, { error: 'task_id é obrigatório' });

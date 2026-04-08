@@ -1,4 +1,4 @@
-import { BaseAgent, extractJson } from './base-agent.js';
+import { BaseAgent } from './base-agent.js';
 
 const SYSTEM_PROMPT = `Você é Coding, o agente de Engenharia desta empresa de software.
 
@@ -56,14 +56,22 @@ O que você vai fazer agora?`;
   }
 
   parseDecision(raw) {
-    const base = extractJson(raw);
-    return {
-      action: base.action,
-      reason: base.reason,
-      zone: base.zone || 'Engineering',
-      collaborators: base.collaborators || [],
-      blocking: base.blocking || false,
-    };
+    // Internal decision parsing — keeps action/reason/zone for telemetry
+    const safe = String(raw || '').trim();
+    const match = safe.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        return {
+          action: parsed.action,
+          reason: parsed.reason,
+          zone: parsed.zone || 'Engineering',
+          collaborators: parsed.collaborators || [],
+          blocking: parsed.blocking || false,
+        };
+      } catch { /* fall through */ }
+    }
+    return { action: null, reason: safe.slice(0, 200), zone: 'Engineering', collaborators: [], blocking: false };
   }
 
   emitCollaborativeEvents(decision, telemetry) {

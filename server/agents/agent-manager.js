@@ -53,12 +53,21 @@ export class AgentManager {
     if (this.started) return;
     this.started = true;
 
+    // Stagger agent startup to avoid burst of simultaneous LLM calls
+    // Each agent starts with a delay proportional to its position
+    const STAGGER_MS = 12000; // 12 seconds between each agent start
     let count = 0;
+    let delay = 0;
+
     for (const [id, agent] of this.agents) {
-      agent.start();
+      setTimeout(() => {
+        agent.start();
+        console.log(`[AgentManager] Started ${agent.name} (${agent.id})`);
+      }, delay);
+      delay += STAGGER_MS;
       count++;
     }
-    console.log(`[AgentManager] All ${count} agents started`);
+    console.log(`[AgentManager] ${count} agents scheduled with ${STAGGER_MS}ms stagger`);
   }
 
   stop() {

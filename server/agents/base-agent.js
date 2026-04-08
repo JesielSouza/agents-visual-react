@@ -1,16 +1,44 @@
 import { getJson } from '../lib/http.js';
 
-export function extractJson(text) {
+export /**
+ * Parse LLM response text into { reply, action, zone }.
+ * Falls back gracefully if model didn't return proper JSON.
+ */
+function parseLLMResponse(text) {
   const safe = String(text || '').trim();
+  // Try to find JSON object in the response
   const match = safe.match(/\{[\s\S]*\}/);
-  if (!match) {
-    return { action: 'Observing', reason: String(safe).slice(0, 200), zone: null };
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      // If model returned JSON, use reply as conversational text, action as internal note
+      return {
+        reply: parsed.reply || parsed.action || null,
+        action: parsed.action || null,
+        zone: parsed.zone || null,
+      };
+    } catch {
+      // JSON-like found but invalid — fall through to text parsing
+    }
   }
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    return { action: 'Observing', reason: String(safe).slice(0, 200), zone: null };
-  }
+  // No valid JSON — treat entire response as conversational reply
+  // Strip any leading "action:" or "reply:" artifacts the model might have written
+  const cleaned = safe
+    .replace(/^["']?\(action[:\s][^}]{0,200}\)/gi, '')
+    .replace(/^["']?\(reply[:\s][^}]{0,200}\)/gi, '')
+    .replace(/^action\s*[:=]\s*/gi, '')
+    .replace(/^reply\s*[:=]\s*/gi, '')
+    .trim();
+  return {
+    reply: cleaned || safe,
+    action: 'respondendo',
+    zone: null,
+  };
+}
+
+function summarizeError(error) {
+  if (!error) return 'Unknown error';
+  return String(error.message || error);
 }
 
 export class BaseAgent {
@@ -27,31 +55,25 @@ export class BaseAgent {
     this.lastError = null;
   }
 
-  // Override in subclass
   getSystemPrompt() {
     return `Você é ${this.name}, um agente de ${this.role || this.team} nesta empresa de software.
 Função: execute suas responsabilidades de forma autônoma e registre suas ações.`;
   }
 
-  // Override in subclass — builds the user prompt with current context
   async buildUserPrompt(agents, events, humanCommand = null) {
     const myStatus = agents.find((a) => a.id === this.id);
     const humanBlock = humanCommand
-      ? `\n[COMANDO DO HUMANO]: "${humanCommand}"\nResponda a este comando优先.\n`
+      ? `\n[COMANDO DO HUMANO]: "${humanCommand}"\nResponda a este comando.\n`
       : '';
     return `${humanBlock}Status atual: ${JSON.stringify(myStatus, null, 2)}
 Eventos recentes: ${JSON.stringify(events.slice(0, 10), null, 2)}`;
   }
 
-  // Override — return extra fields to update in telemetry after decision
-  parseDecision( raw) {
-    return extractJson(raw);
+  parseDecision(raw) {
+    return parseLLMResponse(raw);
   }
 
-  // Override — add agent-specific events based on decision
-  emitCollaborativeEvents(decision, telemetry) {
-    // Subclasses can emit @mentions, delegation, etc.
-  }
+  emitCollaborativeEvents(decision, telemetry) {}
 
   async runCycle(humanCommand = null) {
     try {
@@ -83,7 +105,6 @@ Eventos recentes: ${JSON.stringify(events.slice(0, 10), null, 2)}`;
       });
 
       this.telemetry.recordAgentLLM(this.id, decision.llm_used);
-
       this.telemetry.recordRuntimeEvent({
         agentId: this.id,
         type: 'agent_decision',
@@ -107,10 +128,94 @@ Eventos recentes: ${JSON.stringify(events.slice(0, 10), null, 2)}`;
 
       return { ok: true, action: parsed.action, llm_used: decision.llm_used };
     } catch (err) {
-      this.lastError = err.message || String(err);
+      this.lastError = summarizeError(err);
       console.error(`[${this.name}] Cycle ${this.cycleCount} error: ${this.lastError}`);
       return { ok: false, error: this.lastError };
     }
+  }
+
+  /**
+   * Chat-oriented cycle: returns both a conversational reply and an internal action.
+   * Used by the /api/chat endpoint.
+   */
+  async runWithReply(humanMessage) {
+    try {
+      const [agents, events] = await Promise.all([
+        this.telemetry.getAgentsStatus(),
+        this.telemetry.getMergedEvents(),
+      ]);
+
+      const myStatus = agents.find((a) => a.id === this.id);
+      const collaboratorMap = { 'qa-contract-01': 'qa', 'coding': 'engineering', 'work': 'operations', 'social': 'comms', 'hr': 'people' };
+      const collab = collaboratorMap[this.id] || this.team?.toLowerCase();
+
+      const systemPrompt = `Você é ${this.name},${this.role ? ` ${this.role}` : ''} nesta empresa de software.
+Você está conversando diretamente com um humano.
+
+REGRAS:
+- Responda de forma Conversacional, como se fosse um colega de trabalho. Não seja robótico.
+- Mantenha a resposta curta e direta (1-3 parágrafos).
+- Não descreva o que você vai fazer — apenas responda ou confirme.
+- Se não sabe algo, diga que vai verificar e retornar.
+- Para perguntas sobre status, dê contexto útil.
+
+Responda em JSON com dois campos:
+{"reply":"sua resposta conversacional aqui","action":"breve descrição da ação interna para observabilidade"}`;
+
+      const userPrompt = `Mensagem do humano: "${humanMessage}"
+
+Seu status atual: ${myStatus?.current_task || 'livre'}
+Sua equipe: ${this.team}
+${events.length > 0 ? `Últimos eventos:\n${events.slice(0, 5).map((e) => `- ${e.title}`).join('\n')}` : ''}
+
+Responda em JSON com:
+- "reply": sua resposta conversacional para o humano
+- "action": breve descrição interna (ex: "revisando código", "delegando para QA")`;
+
+      const decision = await this.llmRouter.call([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ], {
+        maxTokens: 400,
+        preferredLLM: this.llmRouter.primaryLLM?.name,
+      });
+
+      const parsed = parseLLMResponse(decision.content);
+
+      // Ensure we always have a conversational reply
+      const reply = parsed.reply || `Entendido. Vou verificar isso.`;
+      const action = parsed.action || 'respondendo';
+
+      this.telemetry.updateAgentState(this.id, {
+        status: 'running',
+        current_task: action,
+        summary: reply,
+        llm_provider: decision.llm_used,
+        last_activity: new Date().toISOString(),
+      });
+
+      this.telemetry.recordRuntimeEvent({
+        agentId: this.id,
+        type: 'agent_chat',
+        title: `${this.name}: ${action}`,
+        details: reply,
+        severity: 'info',
+        llm_provider: decision.llm_used,
+      });
+
+      this.lastError = null;
+      return { ok: true, reply, action, llm_used: decision.llm_used };
+    } catch (err) {
+      this.lastError = summarizeError(err);
+      console.error(`[${this.name}] runWithReply error: ${this.lastError}`);
+      return { ok: false, error: this.lastError };
+    }
+  }
+
+  _fallbackReply(action, message) {
+    // If JSON parsing failed, generate a polite fallback
+    if (!action) return 'Entendido. Deixa eu verificar isso.';
+    return `Pode deixar. Vou trabalhar nisso: ${action}.`;
   }
 
   _inferZone(action) {
@@ -126,7 +231,6 @@ Eventos recentes: ${JSON.stringify(events.slice(0, 10), null, 2)}`;
 
   start() {
     if (this.timer) return;
-    // Run immediately, then on interval
     this.runCycle().catch((e) => console.error(`[${this.name}] Initial cycle: ${e.message}`));
     this.timer = setInterval(() => {
       this.runCycle().catch((e) => console.error(`[${this.name}] Cycle error: ${e.message}`));
