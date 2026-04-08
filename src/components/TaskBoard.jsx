@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useTasks, relativeTime, STATUS_COLORS, PRIORITY_COLORS, PRIORITY_LABELS } from '../hooks/useTasks';
 import { playUiClick, playUiHover } from '../utils/pixelSounds';
 
+const PANEL_BORDER = 'rgba(255,255,255,0.08)';
+const PANEL_SURFACE = 'rgba(26,26,26,0.75)';
 const TEAM_COLORS = {
   Engineering:    '#3b82f6',
   Operations:    '#22c55e',
@@ -24,19 +26,21 @@ function MiniDot({ team, size = 6 }) {
 }
 
 export default function TaskBoard({ agents }) {
-  const { tasks } = useTasks(agents);
+  const { tasks, stats } = useTasks(agents);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(null);
 
   const todo = tasks.filter((t) => t.status === 'todo');
   const inProg = tasks.filter((t) => t.status === 'in_progress');
   const done = tasks.filter((t) => t.status === 'done');
-  const activeCount = todo.length + inProg.length;
+  const failed = tasks.filter((t) => t.status === 'failed');
+  const activeCount = stats.pending + stats.assigned + stats.running;
 
   const STATUS_SECTIONS = [
-    { key: 'todo', label: 'TODO', color: STATUS_COLORS.todo, tasks: todo },
-    { key: 'in_progress', label: 'IN PROGRESS', color: STATUS_COLORS.in_progress, tasks: inProg },
-    { key: 'done', label: 'DONE', color: STATUS_COLORS.done, tasks: done },
+    { key: 'todo', label: 'TODO', color: STATUS_COLORS.todo, tasks: todo, count: stats.pending || todo.length, aggregateOnly: false },
+    { key: 'in_progress', label: 'IN PROGRESS', color: STATUS_COLORS.in_progress, tasks: inProg, count: (stats.assigned + stats.running) || inProg.length, aggregateOnly: false },
+    { key: 'done', label: 'DONE', color: STATUS_COLORS.done, tasks: done, count: stats.completed || done.length, aggregateOnly: done.length === 0 && (stats.completed || 0) > 0 },
+    { key: 'failed', label: 'FAILED', color: STATUS_COLORS.failed, tasks: failed, count: stats.failed || failed.length, aggregateOnly: failed.length === 0 && (stats.failed || 0) > 0 },
   ];
 
   return (
@@ -118,7 +122,7 @@ export default function TaskBoard({ agents }) {
               <span style={{
                 fontFamily: 'var(--font-pixel)', fontSize: 5, color: '#374151',
               }}>
-                {activeCount} ativas / {tasks.length} total
+                {activeCount} ativas / {stats.total || tasks.length} total
               </span>
             </div>
           </div>
@@ -145,7 +149,7 @@ export default function TaskBoard({ agents }) {
                     background: `${section.color}22`, color: section.color,
                     borderRadius: 3, padding: '0 4px',
                   }}>
-                    {section.tasks.length}
+                    {section.count}
                   </span>
                 </div>
 
@@ -156,13 +160,13 @@ export default function TaskBoard({ agents }) {
                     fontFamily: 'var(--font-pixel)', fontSize: 5,
                     color: '#1f2937', letterSpacing: '0.05em',
                   }}>
-                    vazio
+                    {section.aggregateOnly ? 'resumo no backend' : section.count > 0 ? 'sincronizando' : 'vazio'}
                   </div>
                 ) : (
                   section.tasks.map((task) => {
                     const isOpen = expanded === task.id;
                     return (
-                      <div key={task.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                      <div key={task.id} style={{ borderBottom: `1px solid ${PANEL_BORDER}` }}>
                         <div
                           onMouseEnter={playUiHover}
                           onClick={() => {
@@ -173,7 +177,7 @@ export default function TaskBoard({ agents }) {
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '6px 12px',
                             cursor: 'pointer',
-                            background: isOpen ? 'rgba(245,158,11,0.05)' : 'transparent',
+                            background: isOpen ? 'rgba(27,19,13,0.82)' : 'transparent',
                           }}
                         >
                           <MiniDot team={task.assigned_team} />
@@ -208,8 +212,8 @@ export default function TaskBoard({ agents }) {
                         {isOpen && (
                           <div style={{
                             padding: '6px 12px 8px',
-                            background: 'rgba(255,255,255,0.02)',
-                            borderTop: '1px solid rgba(255,255,255,0.04)',
+                            background: PANEL_SURFACE,
+                            borderTop: `1px solid ${PANEL_BORDER}`,
                           }}>
                             <div style={{ display: 'flex', gap: 12, marginBottom: 4 }}>
                               <span style={{ fontFamily: 'var(--font-pixel)', fontSize: 4.5, color: '#555' }}>AGENTE</span>

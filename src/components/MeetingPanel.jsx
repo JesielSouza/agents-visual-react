@@ -1,53 +1,59 @@
+import { useViewport } from '../hooks/useViewport';
 import { playUiClick, playUiHover } from '../utils/pixelSounds';
 import { getAgentDisplayName } from '../utils/agentPersona';
 
 const TEAM_COLORS = {
   Engineering: '#3b82f6',
   Operations: '#22c55e',
-  Communications: '#8b5cf6',
+  Communications: '#d2a86a',
   'People Ops': '#ec4899',
   Quality: '#f59e0b',
   Flex: '#14b8a6',
 };
 
-export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMeeting }) {
+export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMeeting, meetingSignal }) {
+  const { width, height } = useViewport();
   const participants = agents.filter((a) => inMeeting[a.id]);
   const active = meetingCount > 0;
+  const compact = width < 900;
 
   return (
     <div style={{
       position: 'fixed',
-      top: active ? 512 : '50%',
-      right: 18,
-      transform: active ? 'none' : 'translateY(-50%)',
+      top: compact ? 'auto' : (active ? 512 : '50%'),
+      bottom: compact ? 84 : 'auto',
+      right: compact ? 12 : 18,
+      transform: compact ? 'none' : (active ? 'none' : 'translateY(-50%)'),
       zIndex: 50,
-      background: 'rgba(25,17,13,0.9)',
-      border: `1px solid ${active ? '#d97706aa' : '#7c3aed66'}`,
-      borderRadius: 14,
+      background: 'linear-gradient(180deg, rgba(81,55,35,0.97) 0%, rgba(40,27,18,0.98) 100%)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      borderRadius: 16,
       padding: 0,
-      width: 248,
-      boxShadow: '0 18px 34px rgba(0,0,0,0.44), inset 0 1px 0 rgba(255,255,255,0.04)',
+      width: compact ? Math.min(320, width - 24) : 248,
+      maxWidth: 'calc(100vw - 24px)',
+      maxHeight: compact ? Math.min(340, height - 120) : 'none',
+      boxShadow: '0 18px 34px rgba(0,0,0,0.44), 0 0 0 3px rgba(102,73,46,0.88), inset 0 1px 0 rgba(255,255,255,0.05)',
       backdropFilter: 'blur(10px)',
       overflow: 'hidden',
     }}>
       <div style={{
         background: active
-          ? 'linear-gradient(90deg, rgba(120,53,15,0.95), rgba(161,98,7,0.86))'
-          : 'linear-gradient(90deg, rgba(76,29,149,0.95), rgba(91,33,182,0.82))',
+          ? 'linear-gradient(90deg, rgba(123,78,35,0.96), rgba(164,112,52,0.88))'
+          : 'linear-gradient(90deg, rgba(95,63,97,0.94), rgba(118,84,122,0.84))',
         padding: '10px 12px',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        borderBottom: `1px solid ${active ? '#d97706' : '#7c3aed'}50`,
+        borderBottom: '1px solid rgba(255,255,255,0.12)',
       }}>
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="rgba(255,255,255,0.8)">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="#f3d19c">
           <path d="M2 14a6 6 0 0012 0V7H2v7zm2-9a3 3 0 110 6 3 3 0 010-6z" />
         </svg>
         <span style={{
           fontFamily: 'var(--font-pixel)',
           fontSize: 7.5,
           letterSpacing: '0.18em',
-          color: '#fff',
+          color: '#fff7ea',
           textShadow: '1px 1px 0 rgba(0,0,0,0.4)',
         }}>
           REUNIAO
@@ -58,8 +64,8 @@ export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMe
             width: 6,
             height: 6,
             borderRadius: '50%',
-            background: '#f59e0b',
-            boxShadow: '0 0 6px #f59e0b',
+            background: '#f0c15d',
+            boxShadow: '0 0 6px #f0c15d',
           }} />
         )}
       </div>
@@ -69,43 +75,64 @@ export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMe
         display: 'grid',
         gridTemplateColumns: 'repeat(2, minmax(0,1fr))',
         gap: 8,
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-        background: 'rgba(255,255,255,0.02)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(27,19,13,0.72)',
       }}>
         <div style={{
           padding: '6px 7px',
           borderRadius: 8,
-          background: 'rgba(8,12,18,0.34)',
-          border: '1px solid rgba(255,255,255,0.04)',
+          background: 'rgba(43,29,19,0.5)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}>
           <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 4.8, color: '#8f7a66', letterSpacing: '0.12em' }}>
             SALA
           </div>
-          <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 5.8, color: active ? '#fde68a' : '#c4b5fd', marginTop: 2 }}>
+          <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 5.8, color: active ? '#fde68a' : '#d3bce0', marginTop: 2 }}>
             {active ? 'ATIVA' : 'PRONTA'}
           </div>
         </div>
         <div style={{
           padding: '6px 7px',
           borderRadius: 8,
-          background: 'rgba(8,12,18,0.34)',
-          border: '1px solid rgba(255,255,255,0.04)',
+          background: 'rgba(43,29,19,0.5)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}>
           <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 4.8, color: '#8f7a66', letterSpacing: '0.12em' }}>
             TOTAL
           </div>
-          <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 5.8, color: active ? '#fff' : '#94a3b8', marginTop: 2 }}>
+          <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 5.8, color: active ? '#fff7ea' : '#c2b4a3', marginTop: 2 }}>
             {meetingCount} AGT
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '10px 12px', minHeight: 96 }}>
+      <div style={{ padding: '10px 12px', minHeight: 96, overflowY: compact ? 'auto' : 'visible', maxHeight: compact ? Math.min(206, height - 214) : 'none' }}>
+        {meetingSignal && (
+          <div style={{
+            marginBottom: 8,
+            padding: '7px 8px',
+            borderRadius: 8,
+            background: meetingSignal.kind === 'active'
+              ? 'rgba(240,193,93,0.12)'
+              : 'rgba(208,178,222,0.12)',
+            border: `1px solid ${meetingSignal.kind === 'active'
+              ? 'rgba(240,193,93,0.22)'
+              : 'rgba(208,178,222,0.22)'}`,
+          }}>
+            <div style={{ fontFamily: 'var(--font-pixel)', fontSize: 4.8, color: meetingSignal.kind === 'active' ? '#fde68a' : '#d3bce0' }}>
+              {meetingSignal.label}
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.2, color: '#e8dcc8', lineHeight: 1.35, marginTop: 4 }}>
+              {meetingSignal.text}
+            </div>
+          </div>
+        )}
+
         {participants.length === 0 ? (
           <div style={{
             fontFamily: 'var(--font-pixel)',
             fontSize: 5.5,
-            color: '#6f5a46',
+          color: '#8b7257',
             textAlign: 'center',
             padding: '10px 0',
           }}>
@@ -120,14 +147,14 @@ export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMe
                 alignItems: 'center',
                 gap: 8,
                 padding: '6px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
               }}>
                 <div style={{
                   width: 8,
                   height: 8,
                   borderRadius: 2,
                   background: tc,
-                  border: '1px solid rgba(255,255,255,0.2)',
+                  border: '1px solid rgba(255,255,255,0.12)',
                   boxShadow: `0 0 4px ${tc}60`,
                   flexShrink: 0,
                 }} />
@@ -145,7 +172,7 @@ export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMe
                   <div style={{
                     fontFamily: 'var(--font-pixel)',
                     fontSize: 4.8,
-                    color: '#8f7a66',
+                  color: '#a28769',
                     letterSpacing: '0.05em',
                   }}>
                     {a.status}
@@ -168,7 +195,7 @@ export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMe
             marginTop: 6,
             fontFamily: 'var(--font-pixel)',
             fontSize: 5,
-            color: '#a78bfa',
+            color: '#cfb2de',
             textAlign: 'center',
             letterSpacing: '0.1em',
           }}>
@@ -191,17 +218,17 @@ export default function MeetingPanel({ agents, inMeeting, meetingCount, toggleMe
           width: '100%',
           padding: '12px 14px',
           border: 'none',
-          borderTop: `1px solid ${active ? '#d97706aa' : '#7c3aed66'}`,
-          background: 'transparent',
-          color: active ? '#f59e0b' : '#8b5cf6',
+          borderTop: '1px solid rgba(255,255,255,0.12)',
+          background: 'linear-gradient(180deg, rgba(58,39,25,0.2) 0%, rgba(35,24,16,0.28) 100%)',
+          color: active ? '#f0c15d' : '#d0b2de',
           fontFamily: 'var(--font-pixel)',
           fontSize: 7,
           letterSpacing: '0.1em',
           cursor: 'pointer',
           transition: 'all 0.15s',
         }}
-        onMouseEnterCapture={(e) => {
-          e.currentTarget.style.background = active ? 'rgba(245,158,11,0.08)' : 'rgba(139,92,246,0.1)';
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = active ? 'rgba(240,193,93,0.1)' : 'rgba(208,178,222,0.1)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';

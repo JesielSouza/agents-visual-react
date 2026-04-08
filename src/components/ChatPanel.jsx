@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useChat, relativeTime } from '../hooks/useChat';
 import { playUiClick, playUiHover } from '../utils/pixelSounds';
 
+const PANEL_BORDER = 'rgba(255,255,255,0.08)';
+const TEXT_PRIMARY = '#f5e6d3';
+const TEXT_MUTED = '#7b6652';
+
 const TEAM_COLORS = {
   Engineering:    '#3b82f6',
   Operations:    '#22c55e',
@@ -104,7 +108,7 @@ export default function ChatPanel({ agents }) {
         {unread > 0 && (
           <span style={{
             fontFamily: 'var(--font-pixel)', fontSize: 5,
-            background: '#ef4444', color: '#fff',
+            background: '#ef4444', color: TEXT_PRIMARY,
             borderRadius: 3, padding: '1px 5px',
             animation: 'pulse 1s infinite',
           }}>
@@ -153,7 +157,7 @@ export default function ChatPanel({ agents }) {
                     borderRadius: 3,
                     border: filter === f.key ? '1px solid #8b5cf6' : '1px solid #374151',
                     background: filter === f.key ? 'rgba(139,92,246,0.1)' : 'transparent',
-                    color: filter === f.key ? '#8b5cf6' : '#4b5563',
+                    color: filter === f.key ? '#8b5cf6' : TEXT_MUTED,
                     cursor: 'pointer',
                     transition: 'all 0.15s',
                   }}>
@@ -180,7 +184,7 @@ export default function ChatPanel({ agents }) {
                 return (
                   <div key={msg.id} style={{
                     padding: '8px 12px',
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                    borderBottom: `1px solid ${PANEL_BORDER}`,
                     background: msg.read ? 'transparent' : tc.bg,
                     borderLeft: `2px solid ${tc.border}`,
                   }}>
@@ -199,14 +203,14 @@ export default function ChatPanel({ agents }) {
                           </span>
                           <span style={{
                             fontFamily: 'var(--font-pixel)', fontSize: 4.5,
-                            color: '#374151',
+                            color: TEXT_MUTED,
                           }}>
                             {relativeTime(msg.timestamp)}
                           </span>
                         </div>
                         <div style={{
                           fontFamily: 'var(--font-mono)', fontSize: 9,
-                          color: '#d1d5db', lineHeight: 1.4,
+                          color: TEXT_PRIMARY, lineHeight: 1.4,
                           wordBreak: 'break-word',
                         }}>
                           {msg.type === 'direct' && (
