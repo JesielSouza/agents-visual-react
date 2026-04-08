@@ -7,6 +7,7 @@ const PERSONA_BY_ID = {
   work: { name: 'Diego', face: '-_-' },
   social: { name: 'Clara', face: '^o^' },
   hr: { name: 'Ana', face: '^_^' },
+  sargento: { name: 'SARGENTO', face: '>_<' },
   'qa-contract-01': { name: 'Gabriela', face: 'o.o' },
 };
 
@@ -44,6 +45,7 @@ function personaFromName(agent) {
   if (normalized === 'work') return PERSONA_BY_ID.work;
   if (normalized === 'social') return PERSONA_BY_ID.social;
   if (normalized === 'rh' || normalized === 'hr') return PERSONA_BY_ID.hr;
+  if (normalized === 'sargento') return PERSONA_BY_ID.sargento;
   if (normalized.includes('qa contract')) return PERSONA_BY_ID['qa-contract-01'];
   return null;
 }
